@@ -5,7 +5,7 @@ interface SearchResultsProps {
 }
 
 export function SearchResults({ results }: SearchResultsProps) {
-  if (results.length === 0) {
+  if (!results || results.length === 0) {
     return (
       <div className="text-center py-8 text-surface-400 text-sm">
         No results found. Try a different query or mode.
@@ -17,12 +17,12 @@ export function SearchResults({ results }: SearchResultsProps) {
     <div className="space-y-3">
       {results.map((r, i) => (
         <div
-          key={`${r.chunkId}-${i}`}
+          key={`${r.chunk_id}-${i}`}
           className="p-4 rounded-lg border border-surface-200 bg-white hover:border-primary-200 transition-colors"
         >
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-medium text-primary-600">
-              {r.documentTitle}
+              {r.document_title}
             </span>
             <span className="text-xs text-surface-400">
               Score: {(r.score * 100).toFixed(1)}%
@@ -34,14 +34,14 @@ export function SearchResults({ results }: SearchResultsProps) {
           </p>
 
           <div className="flex items-center gap-2 mt-2 text-xs text-surface-400">
-            {r.scoreVector > 0 && (
+            {r.score_vector > 0 && (
               <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
-                vector: {(r.scoreVector * 100).toFixed(0)}%
+                vector: {(r.score_vector * 100).toFixed(0)}%
               </span>
             )}
-            {r.scoreKeyword > 0 && (
+            {r.score_keyword > 0 && (
               <span className="px-1.5 py-0.5 rounded bg-green-50 text-green-700">
-                keyword: {(r.scoreKeyword * 100).toFixed(0)}%
+                keyword: {(r.score_keyword * 100).toFixed(0)}%
               </span>
             )}
           </div>

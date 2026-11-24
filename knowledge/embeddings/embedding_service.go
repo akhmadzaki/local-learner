@@ -26,11 +26,13 @@ func NewEmbeddingService(provider EmbeddingProvider, vectorStore *vectorstore.Ve
 	}
 }
 
-// EmbeddingResult pairs a chunk with its generated vector.
+// EmbeddingResult pairs a chunk with its generated vector and metadata.
 type EmbeddingResult struct {
-	ChunkID   string    `json:"chunk_id"`
-	Vector    []float32 `json:"vector"`
-	ModelName string    `json:"model_name"`
+	ChunkID    string    `json:"chunk_id"`
+	DocumentID string    `json:"document_id"`
+	Vector     []float32 `json:"vector"`
+	ModelName  string    `json:"model_name"`
+	Dimension  int       `json:"dimension"`
 }
 
 // GenerateEmbeddings produces vectors for a list of chunks.
@@ -44,12 +46,12 @@ func (svc *EmbeddingService) GenerateEmbeddings(ctx context.Context, chunks []*m
 			continue
 		}
 
-		svc.embedRepo.Create(ctx, chunk.ID, len(vector), svc.Provider.ModelName())
-
 		results = append(results, EmbeddingResult{
-			ChunkID:   chunk.ID,
-			Vector:    vector,
-			ModelName: svc.Provider.ModelName(),
+			ChunkID:    chunk.ID,
+			DocumentID: chunk.DocumentID,
+			Vector:     vector,
+			ModelName:  svc.Provider.ModelName(),
+			Dimension:  len(vector),
 		})
 	}
 
@@ -57,10 +59,17 @@ func (svc *EmbeddingService) GenerateEmbeddings(ctx context.Context, chunks []*m
 }
 
 // StoreVectors writes embedding vectors into the vector store for similarity search.
-func (svc *EmbeddingService) StoreVectors(ctx context.Context, results []EmbeddingResult) {
+// The single UpsertVector call handles all columns (chunk_id, document_id, embedding,
+// model_name, dimension, metadata) so a separate embedRepo.Create is no longer needed.
+// Returns false if any UpsertVector call fails.
+func (svc *EmbeddingService) StoreVectors(ctx context.Context, results []EmbeddingResult) bool {
 	for _, r := range results {
-		svc.vectorStore.UpsertVector(ctx, r.ChunkID, r.Vector, nil)
+		if !svc.vectorStore.UpsertVector(ctx, r.ChunkID, r.DocumentID, r.ModelName, r.Dimension, r.Vector, nil) {
+			log.Printf("EmbeddingService: Failed to store vector for chunk %s", r.ChunkID)
+			return false
+		}
 	}
+	return true
 }
 
 // DeleteVectorsByDocument removes all vectors belonging to a document.

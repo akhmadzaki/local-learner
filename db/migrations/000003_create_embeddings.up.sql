@@ -8,12 +8,13 @@ CREATE TABLE IF NOT EXISTS embeddings (
     chunk_id      UUID         NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
     document_id   UUID         NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
     model_name    VARCHAR(128) NOT NULL DEFAULT 'local',
-    dimension     INT          NOT NULL DEFAULT 384,
-    embedding     VECTOR(384)  NOT NULL,
+    dimension     INT          NOT NULL DEFAULT 768,
+    embedding     VECTOR(768)  NOT NULL,
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_embeddings_chunk ON embeddings(chunk_id);
+-- Unique constraint enables ON CONFLICT (chunk_id) in UpsertVector
+CREATE UNIQUE INDEX idx_embeddings_chunk ON embeddings(chunk_id);
 CREATE INDEX idx_embeddings_document ON embeddings(document_id);
 
 -- IVFFlat index for approximate nearest-neighbour search

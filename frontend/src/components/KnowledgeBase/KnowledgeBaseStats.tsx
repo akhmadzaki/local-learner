@@ -2,19 +2,24 @@ import { useState, useEffect } from "react";
 import { api } from "../../api/client";
 
 interface IndexStats {
-  totalDocuments: number;
-  totalChunks: number;
-  totalVectors: number;
-  lastIndexedAt: string;
-  indexHealth: "healthy" | "degraded" | "unhealthy";
+  total_documents: number;
+  total_chunks: number;
+  total_vectors: number;
+  last_indexed_at: string;
+  index_health: "healthy" | "degraded" | "unhealthy";
+}
+
+interface IndexStatsResponse {
+  data: IndexStats;
+  status: string;
 }
 
 export function KnowledgeBaseStats() {
-  const [stats, setStats] = useState<IndexStats | null>(null);
+  const [stats, setStats] = useState<IndexStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<IndexStats>("/index/stats")
+    api.get<IndexStatsResponse>("/index/stats")
       .then(setStats)
       .finally(() => setLoading(false));
   }, []);
@@ -27,13 +32,13 @@ export function KnowledgeBaseStats() {
 
       {stats && (
         <div className="grid grid-cols-2 gap-4 mb-6">
-          <StatCard label="Documents" value={stats.totalDocuments} />
-          <StatCard label="Chunks" value={stats.totalChunks} />
-          <StatCard label="Vectors" value={stats.totalVectors} />
+          <StatCard label="Documents" value={stats.data.total_documents} />
+          <StatCard label="Chunks" value={stats.data.total_chunks} />
+          <StatCard label="Vectors" value={stats.data.total_vectors} />
           <StatCard
             label="Index Health"
-            value={stats.indexHealth}
-            color={stats.indexHealth === "healthy" ? "text-green-600" : "text-red-600"}
+            value={stats.data.index_health}
+            color={stats.data.index_health === "healthy" ? "text-green-600" : "text-red-600"}
           />
         </div>
       )}

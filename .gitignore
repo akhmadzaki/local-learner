@@ -4,11 +4,13 @@
 # Environment
 .env
 !.env.example
+frontend/.env
 
 # Build output
 /build/
 /dist/
 /out/
+*.out
 
 # IDE
 .idea/

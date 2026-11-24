@@ -1,6 +1,20 @@
 import { useState, useEffect } from "react";
 import { documentsApi } from "../../api/documents";
-import type { Document } from "../../types/document";
+import type { Document, DocumentRaw } from "../../types/document";
+
+/** Convert snake_case backend document to camelCase frontend document. */
+function toDocument(raw: DocumentRaw): Document {
+  return {
+    id: raw.id,
+    title: raw.title,
+    source: raw.source as Document["source"],
+    status: raw.status as Document["status"],
+    chunkCount: raw.chunk_count,
+    metadata: raw.metadata,
+    createdAt: raw.created_at,
+    updatedAt: raw.updated_at,
+  };
+}
 
 export function DocumentList() {
   const [docs, setDocs] = useState<Document[]>([]);
@@ -9,7 +23,7 @@ export function DocumentList() {
 
   useEffect(() => {
     documentsApi.list()
-      .then((res) => setDocs(res.documents))
+      .then((res) => setDocs((res.data ?? []).map(toDocument)))
       .catch((err) => {
         setError(err instanceof Error ? err.message : "Failed to load documents");
       })
@@ -71,7 +85,14 @@ export function DocumentList() {
                 </td>
                 <td className="px-4 py-3">
                   <button
-                    onClick={() => documentsApi.delete(doc.id)}
+                    onClick={async () => {
+                      try {
+                        await documentsApi.delete(doc.id);
+                        setDocs((prev) => prev.filter((d) => d.id !== doc.id));
+                      } catch {
+                        // Silently handle — the row stays visible on failure
+                      }
+                    }}
                     className="text-red-500 hover:text-red-700 text-xs"
                   >
                     Delete

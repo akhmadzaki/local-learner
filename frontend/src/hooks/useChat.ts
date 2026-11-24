@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { chatApi } from "../api/search";
 import type { ChatResponse, AgentMode, ConversationTurn } from "../types/agent";
+import type { ApiResponse } from "../types/search";
 
 export function useChat() {
   const [messages, setMessages] = useState<ConversationTurn[]>([]);
@@ -27,16 +28,17 @@ export function useChat() {
     setMessages((prev) => [...prev, userTurn]);
 
     try {
-      const res = await chatApi.send({ message: text, conversationId: convId ?? undefined, mode });
-      setConvId(res.conversationId);
+      const res = await chatApi.send({ message: text, conversation_id: convId ?? undefined, mode }) as unknown as ApiResponse<ChatResponse>;
+      const data = res.data;
+      setConvId(data.conversation_id);
 
       const assistantTurn: ConversationTurn = {
         id: crypto.randomUUID(),
-        conversationId: res.conversationId,
+        conversationId: data.conversation_id,
         role: "assistant",
-        content: res.answer,
-        sources: res.sources,
-        tokenUsage: res.tokenUsage,
+        content: data.answer,
+        sources: data.sources ?? [],
+        tokenUsage: data.token_usage ?? {},
         createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, assistantTurn]);

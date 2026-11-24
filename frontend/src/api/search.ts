@@ -7,13 +7,13 @@ export const searchApi = {
     api.post<SearchResponse>("/search", req),
 
   vectorSearch: (query: string, topK = 10) =>
-    api.post<SearchResponse>("/search/vector", { query, topK }),
+    api.post<SearchResponse>("/search/vector", { query, top_k: topK }),
 
   keywordSearch: (query: string, topK = 10) =>
-    api.post<SearchResponse>("/search/keyword", { query, topK }),
+    api.post<SearchResponse>("/search/keyword", { query, top_k: topK }),
 
   hybridSearch: (query: string, topK = 10, alpha = 0.5) =>
-    api.post<SearchResponse>("/search/hybrid", { query, topK, hybridAlpha: alpha }),
+    api.post<SearchResponse>("/search/hybrid", { query, top_k: topK, hybrid_alpha: alpha }),
 };
 
 export const chatApi = {

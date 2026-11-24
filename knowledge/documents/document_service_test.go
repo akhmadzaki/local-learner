@@ -10,11 +10,12 @@ import (
 
 // mockDocRepo implements DocumentRepository interface.
 type mockDocRepo struct {
-	createFn   func(ctx context.Context, title, source, status string) *models.Document
-	findByIDFn func(ctx context.Context, id string) *models.Document
-	findAllFn  func(ctx context.Context, offset, limit int) []*models.Document
-	updateFn   func(ctx context.Context, id, status string) bool
-	deleteFn   func(ctx context.Context, id string) bool
+	createFn           func(ctx context.Context, title, source, status string) *models.Document
+	findByIDFn         func(ctx context.Context, id string) *models.Document
+	findAllFn          func(ctx context.Context, offset, limit int) []*models.Document
+	updateFn           func(ctx context.Context, id, status string) bool
+	updateChunkCountFn func(ctx context.Context, id string, count int) bool
+	deleteFn           func(ctx context.Context, id string) bool
 }
 
 func (m *mockDocRepo) Create(ctx context.Context, title, source, status string) *models.Document {
@@ -31,6 +32,13 @@ func (m *mockDocRepo) FindAll(ctx context.Context, offset, limit int) []*models.
 
 func (m *mockDocRepo) UpdateStatus(ctx context.Context, id, status string) bool {
 	return m.updateFn(ctx, id, status)
+}
+
+func (m *mockDocRepo) UpdateChunkCount(ctx context.Context, id string, count int) bool {
+	if m.updateChunkCountFn != nil {
+		return m.updateChunkCountFn(ctx, id, count)
+	}
+	return true
 }
 
 func (m *mockDocRepo) Delete(ctx context.Context, id string) bool {
@@ -54,7 +62,7 @@ func (m *mockChunkSvc) DeleteChunksByDocument(ctx context.Context, docID string)
 // mockEmbedSvc implements EmbeddingServiceInterface.
 type mockEmbedSvc struct {
 	generateFn func(ctx context.Context, chunks []*models.Chunk) []embeddings.EmbeddingResult
-	storeFn    func(ctx context.Context, results []embeddings.EmbeddingResult)
+	storeFn    func(ctx context.Context, results []embeddings.EmbeddingResult) bool
 	deleteFn   func(ctx context.Context, docID string)
 }
 
@@ -62,8 +70,8 @@ func (m *mockEmbedSvc) GenerateEmbeddings(ctx context.Context, chunks []*models.
 	return m.generateFn(ctx, chunks)
 }
 
-func (m *mockEmbedSvc) StoreVectors(ctx context.Context, results []embeddings.EmbeddingResult) {
-	m.storeFn(ctx, results)
+func (m *mockEmbedSvc) StoreVectors(ctx context.Context, results []embeddings.EmbeddingResult) bool {
+	return m.storeFn(ctx, results)
 }
 
 func (m *mockEmbedSvc) DeleteVectorsByDocument(ctx context.Context, docID string) {
@@ -73,11 +81,16 @@ func (m *mockEmbedSvc) DeleteVectorsByDocument(ctx context.Context, docID string
 func TestIngestDocument_Success(t *testing.T) {
 	ctx := context.Background()
 
+	var chunkCount int
 	mockRepo := &mockDocRepo{
 		createFn: func(ctx context.Context, title, source, status string) *models.Document {
 			return &models.Document{ID: "doc-1", Title: title, Source: source, Status: status}
 		},
 		updateFn: func(ctx context.Context, id, status string) bool {
+			return true
+		},
+		updateChunkCountFn: func(ctx context.Context, id string, count int) bool {
+			chunkCount = count
 			return true
 		},
 	}
@@ -96,7 +109,7 @@ func TestIngestDocument_Success(t *testing.T) {
 				{ChunkID: chunks[0].ID, Vector: []float32{0.1, 0.2, 0.3}, ModelName: "test-model"},
 			}
 		},
-		storeFn: func(ctx context.Context, results []embeddings.EmbeddingResult) {},
+		storeFn: func(ctx context.Context, results []embeddings.EmbeddingResult) bool { return true },
 	}
 
 	svc := &DocumentService{
@@ -115,6 +128,9 @@ func TestIngestDocument_Success(t *testing.T) {
 	}
 	if result.ChunkCount != 1 {
 		t.Errorf("expected chunk count 1, got %d", result.ChunkCount)
+	}
+	if chunkCount != 1 {
+		t.Errorf("expected UpdateChunkCount to be called with 1, got %d", chunkCount)
 	}
 }
 

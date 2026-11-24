@@ -10,10 +10,6 @@ export function Header() {
         </span>
       </div>
 
-      <div className="flex-1 max-w-xl mx-auto">
-        <SearchBar />
-      </div>
-
       <div className="flex items-center gap-2 text-xs text-surface-500">
         <span className="i-more-horizontal" />
         <span>v1.0</span>

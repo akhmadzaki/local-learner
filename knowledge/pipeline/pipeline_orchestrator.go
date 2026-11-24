@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -62,7 +63,12 @@ func (orch *PipelineOrchestrator) ProcessNext() bool {
 	var success bool
 	switch job.Action {
 	case "ingest":
-		success = true
+		// Run the full pipeline: ingest → chunk → embed → index
+		result := orch.pipeline.RunFullPipeline(context.Background(), job.DocID, job.DocID, "pipeline")
+		success = result.Status != "failed"
+		if !success {
+			log.Printf("PipelineOrchestrator: ingest failed for job %s: %s", job.JobID, result.Error)
+		}
 	case "reindex":
 		success = true
 	case "delete":

@@ -16,10 +16,10 @@ type AgentService struct {
 	convManager  *ConversationManager
 }
 
-func NewAgentService(searchSvc *search.SearchService, convManager *ConversationManager, llmProvider, modelName string, maxTokens int, temperature float64) *AgentService {
+func NewAgentService(searchSvc *search.SearchService, convManager *ConversationManager, modelName string, maxTokens int, temperature float64, baseURL string) *AgentService {
 	return &AgentService{
 		searchSvc:    searchSvc,
-		reasonEngine: NewReasoningEngine(llmProvider, modelName, maxTokens, temperature),
+		reasonEngine: NewReasoningEngine(modelName, maxTokens, temperature, baseURL),
 		toolReg:      NewToolRegistry(),
 		convManager:  convManager,
 	}

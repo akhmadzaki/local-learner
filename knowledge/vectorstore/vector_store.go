@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"log"
+
+	"github.com/pgvector/pgvector-go"
 )
 
 // VectorStore is the abstraction over the vector database (pgvector).
@@ -34,10 +36,13 @@ func NewVectorStore(db *sql.DB, tableName string, dimension int) *VectorStore {
 }
 
 // UpsertVector inserts or updates a vector in the store.
-func (s *VectorStore) UpsertVector(ctx context.Context, chunkID string, vector []float32, metadata map[string]interface{}) bool {
-	query := "INSERT INTO embeddings (chunk_id, embedding, metadata) VALUES ($1, $2, $3) " +
-		"ON CONFLICT (chunk_id) DO UPDATE SET embedding = $2, metadata = $3"
-	_, err := s.db.ExecContext(ctx, query, chunkID, vector, metadata)
+// The single INSERT covers all columns (chunk_id, document_id, embedding, model_name, dimension, metadata)
+// so callers no longer need a separate embedRepo.Create call.
+func (s *VectorStore) UpsertVector(ctx context.Context, chunkID, documentID, modelName string, dimension int, vector []float32, metadata map[string]interface{}) bool {
+	pgVector := pgvector.NewVector(vector)
+	query := "INSERT INTO embeddings (chunk_id, document_id, embedding, model_name, dimension) VALUES ($1, $2, $3, $4, $5) " +
+		"ON CONFLICT (chunk_id) DO UPDATE SET embedding = $3, model_name = $4, dimension = $5"
+	_, err := s.db.ExecContext(ctx, query, chunkID, documentID, pgVector, modelName, dimension)
 	if err != nil {
 		log.Printf("VectorStore: Upsert failed: %v", err)
 		return false
@@ -47,26 +52,32 @@ func (s *VectorStore) UpsertVector(ctx context.Context, chunkID string, vector [
 
 // Search performs approximate nearest-neighbour search via pgvector.
 func (s *VectorStore) Search(ctx context.Context, query []float32, topK int) []SearchResult {
-	queryStr := "SELECT chunk_id, document_id, content, " +
-		"1 - (embedding <=> $1) AS score " +
-		"FROM embeddings " +
-		"ORDER BY embedding <=> $1 " +
+	pgQuery := pgvector.NewVector(query)
+	queryStr := "SELECT e.chunk_id, e.document_id, c.content, " +
+		"1 - (e.embedding <=> $1) AS score " +
+		"FROM embeddings e " +
+		"JOIN chunks c ON c.id = e.chunk_id " +
+		"ORDER BY e.embedding <=> $1 " +
 		"LIMIT $2"
 
-	rows, err := s.db.QueryContext(ctx, queryStr, query, topK)
+	rows, err := s.db.QueryContext(ctx, queryStr, pgQuery, topK)
 	if err != nil {
 		log.Printf("VectorStore: Search failed: %v", err)
 		return nil
 	}
 	defer rows.Close()
 
-	var results []SearchResult
+	results := make([]SearchResult, 0)
 	for rows.Next() {
 		var r SearchResult
 		if err := rows.Scan(&r.ChunkID, &r.DocumentID, &r.Content, &r.Score); err != nil {
 			continue
 		}
 		results = append(results, r)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("VectorStore: Row iteration error: %v", err)
+		return nil
 	}
 	return results
 }

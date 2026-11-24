@@ -6,6 +6,7 @@
 /build/
 /dist/
 /out/
+*.out
 
 # ── IDE & OS ──────────────────────────────────────────────────────────────────
 .idea/
@@ -31,4 +32,12 @@ Thumbs.db
 # ── Docker ─────────────────────────────────────────────────────────────────────
 docker-compose*.yml
 Dockerfile
+Dockerfile.dev
 .dockerignore
+
+# ── Project files (not needed in Docker build context) ─────────────────────────
+/frontend/
+.github/
+Makefile
+PRODUCTION_READINESS.md
+README.md

@@ -31,9 +31,9 @@ A full-stack AI-powered knowledge base for personal learning. Upload documents, 
                     └─────────────────────────────────────┘
 ```
 
-## Quick Start (Docker)
+## Quick Start
 
-The fastest way to get the full stack running — PostgreSQL + pgvector, Go backend, and React frontend — is with Docker Compose:
+The fastest way to get the full stack running — PostgreSQL + pgvector, Ollama (containerized LLM), Go backend, and React frontend — is with a single command:
 
 ```bash
 # Clone the repo
@@ -43,325 +43,176 @@ cd go-backend
 # Copy environment file
 cp .env.example .env
 
-# Start all services (PostgreSQL + pgvector, backend, frontend)
-docker compose up -d
+# Start all services (PostgreSQL, Ollama, backend, frontend)
+make run
 
 # Open the frontend
 open http://localhost:3000
 ```
 
-This starts three containers:
+This starts four containers:
 | Service | Image | Port |
 |---------|-------|------|
-| [`postgres`](docker-compose.yml#L23) | `pgvector/pgvector:pg16` | `5432` |
-| [`backend`](docker-compose.yml#L42) | Built from [`Dockerfile`](Dockerfile) | `8080` |
-| [`frontend`](docker-compose.yml#L82) | Built from [`frontend/Dockerfile`](frontend/Dockerfile) | `3000` |
+| [`postgres`](docker-compose.yml#L104) | `pgvector/pgvector:pg16` | `5432` |
+| [`ollama`](docker-compose.yml#L36) | `ollama/ollama` | `11434` |
+| [`backend`](docker-compose.yml#L129) | Built from [`Dockerfile`](Dockerfile) | `8080` |
+| [`frontend`](docker-compose.yml#L232) | Built from [`frontend/Dockerfile`](frontend/Dockerfile) | `3000` |
 
-> The PostgreSQL container includes the pgvector extension out of the box — no manual installation needed. The database `go_backend`, user `postgres`, and the `vector` extension are all configured automatically via the [`docker-compose.yml`](docker-compose.yml#L29-L34) environment variables.
+> **No manual Ollama installation required.** The LLM runs inside a Docker container. Models are pulled automatically on first run via `make run`.
 
-To stop: `docker compose down`
-To stop and delete data: `docker compose down -v`
+### GPU Acceleration
+
+If you have an **NVIDIA GPU** with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) installed:
+
+```bash
+# Production with NVIDIA GPU
+make run-gpu
+```
+
+On **Apple Silicon (MPS / Metal)**, Ollama uses GPU acceleration automatically — no special Docker configuration is needed:
+
+```bash
+OLLAMA_PROFILE=mps make run
+```
+
+The GPU backend is selected via Docker Compose **profiles**. See the [`ollama` services](docker-compose.yml#L21) for details.
+
+To stop all services:
+```bash
+make stop
+```
+
+To stop and delete all data (database + downloaded models):
+```bash
+make stop   # then
+docker compose down -v
+```
 
 ---
 
-## Local Setup Tutorial
+## OS-Specific Notes
 
-This guide walks you through running each component locally for development. PostgreSQL + pgvector runs via Docker (no manual install needed), while the backend and frontend run directly on your machine for hot-reload and debugging.
+Docker handles cross-platform compatibility, but each OS has unique considerations for GPU acceleration:
 
----
+| OS | GPU Support | Notes |
+|----|-------------|-------|
+| **Linux** | NVIDIA GPU via [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) | Use `make run-gpu` (activates [`ollama-gpu`](docker-compose.yml#L57) with `--profile nvidia`) |
+| **macOS (Apple Silicon)** | Metal GPU (automatic via Rosetta 2) | Use `OLLAMA_PROFILE=mps make run` (activates [`ollama-mps`](docker-compose.yml#L86) with `--profile mps`) |
+| **macOS (Intel)** | CPU only | `make run` — no changes required |
+| **Windows** | NVIDIA GPU via [NVIDIA Container Toolkit for WSL2](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) | Use `make run-gpu` (activates [`ollama-gpu`](docker-compose.yml#L57) with `--profile nvidia`) |
 
-### 1. Prerequisites
-
-| Tool | Version | Purpose |
-|------|---------|---------|
-| [Go](https://go.dev/dl/) | 1.21+ | Backend server |
-| [Node.js](https://nodejs.org/) | 18+ | Frontend build tooling |
-| [Docker](https://docs.docker.com/engine/install/) | 24+ | PostgreSQL + pgvector container |
-| [Ollama](https://ollama.com/download) | Latest | Local LLM inference |
-
-> **Hardware note:** This project is designed to be machine-aware. Set [`EMBEDDING_DEVICE`](#environment-variables) to `cpu`, `cuda` (NVIDIA GPU), or `mps` (Apple Silicon) depending on your hardware.
+> **Prerequisites:** [Docker](https://docs.docker.com/engine/install/), [Git](https://git-scm.com/), and [GNU Make](https://www.gnu.org/software/make/) are required on all platforms.
 
 ---
 
-### 2. Database Setup (PostgreSQL + pgvector via Docker)
+## Local Development
 
-PostgreSQL with the pgvector extension runs in a Docker container. No manual PostgreSQL or pgvector installation is required.
+Run the backend and frontend directly on your machine while PostgreSQL and Ollama run in Docker.
 
-#### 2.1 Start the Database
+### 1. Start Dependencies
 
 ```bash
-# Start only the PostgreSQL + pgvector container
-docker compose up -d postgres
+# Start PostgreSQL + pgvector and Ollama (CPU)
+docker compose --profile cpu up -d postgres ollama
+
+# Or with NVIDIA GPU:
+# docker compose --profile nvidia up -d postgres ollama-gpu
 ```
 
-This uses the [`pgvector/pgvector:pg16`](https://hub.docker.com/r/pgvector/pgvector) image ([`docker-compose.yml`](docker-compose.yml#L23-L39)), which comes with pgvector pre-installed. The container automatically:
-- Creates the `go_backend` database
-- Creates the `postgres` user
-- Enables the `vector` extension
-
-#### 2.2 Verify the Database
+### 2. Configure Environment
 
 ```bash
-# Check that PostgreSQL is healthy
-docker compose ps postgres
-
-# Connect to the database and verify pgvector
-docker compose exec postgres psql -U postgres -d go_backend -c "\dx"
-```
-
-You should see the `vector` extension listed.
-
-> **Password:** The default password is `postgres` (set via [`POSTGRES_PASSWORD`](docker-compose.yml#L32)). To change it, set `DB_PASSWORD` in your `.env` file before running `docker compose up`.
-
----
-
-### 3. Ollama Setup (Local LLM)
-
-The backend uses Ollama to serve a local LLM for the AI chat agent. The default model is `llama-3.2-3b-instruct`.
-
-```bash
-# Install Ollama (Linux / macOS)
-curl -fsSL https://ollama.com/install.sh | sh
-
-# Start the Ollama service
-ollama serve
-```
-
-In a **separate terminal**, pull the default model:
-
-```bash
-# Pull the default model (3B parameters — runs on most machines)
-ollama pull llama-3.2-3b-instruct
-
-# (Optional) Pull a smaller model for low-resource machines
-ollama pull llama-3.2-1b-instruct
-
-# (Optional) Pull a larger model if you have sufficient RAM/VRAM
-ollama pull llama-3.2-8b-instruct
-```
-
-> **Verify Ollama is running:** Open `http://localhost:11434` in your browser. You should see `Ollama is running`.
-
-To use a different model, update [`LLM_MODEL`](#environment-variables) in your `.env` file.
-
----
-
-### 4. Backend Setup
-
-#### 4.1 Clone and Enter the Project
-
-```bash
-git clone https://github.com/akhmadzaki/go-backend.git
-cd go-backend
-```
-
-#### 4.2 Configure Environment
-
-```bash
-# Copy the example environment file
 cp .env.example .env
 ```
 
-Open [`.env`](.env) and adjust values as needed. The defaults work out-of-the-box for a local setup:
+Key environment variables (defaults work for local development):
 
 | Variable | Default | Notes |
 |----------|---------|-------|
 | `APP_PORT` | `8080` | Backend API server port |
-| `DB_HOST` | `localhost` | Use `localhost` for Docker on same host; `postgres` inside Docker Compose network |
-| `DB_PORT` | `5432` | Default PostgreSQL port |
-| `DB_NAME` | `go_backend` | Created automatically by the Docker container |
-| `DB_USER` | `postgres` | |
-| `DB_PASSWORD` | `postgres` | Must match [`POSTGRES_PASSWORD`](docker-compose.yml#L32) in docker-compose.yml |
-| `EMBEDDING_PROVIDER` | `local` | `local` (stub) or `openai` (requires API key) |
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Embedding model name |
-| `EMBEDDING_DIMENSION` | `384` | Must match the model's output dimension |
-| `EMBEDDING_DEVICE` | `cpu` | `cpu`, `cuda`, or `mps` |
+| `DB_HOST` | `localhost` | `postgres` inside Docker Compose network |
+| `EMBEDDING_PROVIDER` | `ollama` | `ollama` or `openai` |
+| `EMBEDDING_MODEL` | `nomic-embed-text` | Must be pulled in Ollama |
 | `LLM_PROVIDER` | `local` | `local` (Ollama), `openai`, or `anthropic` |
-| `LLM_MODEL` | `llama-3.2-3b-instruct` | Must be pulled in Ollama (see [Step 3](#3-ollama-setup-local-llm)) |
-| `LLM_BASE_URL` | `http://localhost:11434` | Ollama API endpoint |
+| `LLM_MODEL` | `llama3.2:1b-instruct-q2_K` | Must be pulled in Ollama |
 | `CHUNK_STRATEGY` | `sentence` | `fixed`, `sentence`, or `paragraph` |
-| `CHUNK_SIZE` | `512` | Max tokens per chunk |
-| `CHUNK_OVERLAP` | `64` | Overlap tokens between chunks |
 
-> **Docker Compose note:** When running the backend via [`docker compose`](#quick-start-docker), the environment variables are overridden by [`docker-compose.yml`](docker-compose.yml#L50-L76). Notably, [`DB_HOST`](docker-compose.yml#L55) is set to `postgres` (the service name) so the backend can reach the database container over the internal network.
-
-#### 4.3 Install Go Dependencies
+### 3. Run the Backend
 
 ```bash
+# Install dependencies
 go mod tidy
-```
 
-This downloads the project's dependencies: [`lib/pq`](https://github.com/lib/pq) (PostgreSQL driver), [`golang-migrate`](https://github.com/golang-migrate/migrate) (schema migrations), and their transitive dependencies.
-
-#### 4.4 Run Database Migrations
-
-Migrations use [golang-migrate](https://github.com/golang-migrate/migrate) with SQL files embedded into the binary via `//go:embed`. They run **automatically** on server start (controlled by [`DB_AUTO_MIGRATE`](#environment-variables), default `true`).
-
-The following tables are created:
-
-| Migration | Table | Purpose |
-|-----------|-------|---------|
-| [`000001_create_documents`](db/migrations/000001_create_documents.up.sql) | `documents` | Uploaded document metadata |
-| [`000002_create_chunks`](db/migrations/000002_create_chunks.up.sql) | `chunks` | Document chunks with full-text search (`TSVECTOR`) |
-| [`000003_create_embeddings`](db/migrations/000003_create_embeddings.up.sql) | `embeddings` | Vector embeddings (`VECTOR(384)`) with IVFFlat index |
-| [`000004_create_conversations`](db/migrations/000004_create_conversations.up.sql) | `conversations`, `conversation_turns` | Multi-turn chat history |
-
-**Manual migration commands** (via the embedded [`cmd/migrate`](cmd/migrate/main.go) CLI):
-
-```bash
-# Apply all pending migrations
+# Run database migrations (automatic on server start when DB_AUTO_MIGRATE=true)
+# Or manually:
 go run ./cmd/migrate up
 
-# Roll back the most recent migration
-go run ./cmd/migrate down
-
-# Migrate to a specific version (up or down)
-go run ./cmd/migrate to 2
-
-# Show the current schema version
-go run ./cmd/migrate version
-
-# Drop all managed tables (destructive!)
-go run ./cmd/migrate drop
-```
-
-Or use the Makefile shortcuts:
-
-```bash
-make migrate-up
-make migrate-down
-make migrate-version
-make migrate-to VERSION=2
-make migrate-create NAME=add_user_preferences
-```
-
-To run migrations without starting the HTTP server:
-
-```bash
-go run main.go -migrate-only
-```
-
-#### 4.5 Start the Backend Server
-
-```bash
+# Start the server
 go run main.go
 ```
 
-You should see output similar to:
+Verify: `curl http://localhost:8080/api/v1/health` → `{"status":"ok"}`
 
-```
-Starting 1.0.0 server on port 8080 (env: development)
-db.Connect: connected to PostgreSQL at localhost:5432/go_backend
-Server listening on :8080
-```
-
-> **Verify the server is running:**
-> ```bash
-> curl http://localhost:8080/api/v1/health
-> ```
-> Expected response: `{"status":"ok"}` (or similar health-check payload).
-
----
-
-### 5. Frontend Setup
-
-#### 5.1 Configure Frontend Environment
+### 4. Run the Frontend
 
 ```bash
 cd frontend
 cp .env.example .env
-```
-
-The default [`frontend/.env`](frontend/.env) points the Vite dev server to the backend at `http://localhost:8080/api/v1`. Change [`VITE_API_BASE_URL`](frontend/.env.example) if your backend runs on a different host or port.
-
-#### 5.2 Install Dependencies
-
-```bash
 npm install
-```
-
-#### 5.3 Start the Dev Server
-
-```bash
 npm run dev
 ```
 
-The Vite dev server starts on `http://localhost:5173` by default. Open this URL in your browser.
+The Vite dev server starts on `http://localhost:5173`.
 
-> **Verify the frontend connects to the backend:** Open the browser's developer console (F12). You should see network requests to `http://localhost:8080/api/v1/...` succeeding.
+### 5. Verify End-to-End
 
----
-
-### 6. Verify the Full Stack
-
-Once all services are running, confirm the system works end-to-end:
-
-1. **Open the frontend** — At `http://localhost:5173` (Vite dev server) or `http://localhost:3000` (Docker Compose)
-2. **Upload a document** — Use the upload UI to add a PDF, Markdown, HTML, or plain text file
-3. **Check the document status** — It should move from `pending` → `processing` → `completed`
-4. **Search your documents** — Use the hybrid search bar to find content
-5. **Start a conversation** — Ask a question about your uploaded documents in the chat interface
+1. Open the frontend at `http://localhost:5173` (dev) or `http://localhost:3000` (Docker)
+2. Upload a document (PDF, Markdown, HTML, or plain text)
+3. Search your documents using hybrid search
+4. Start a conversation in the chat interface
 
 ---
 
-### 7. Interactive API Documentation (Swagger)
+## Interactive API Documentation (Swagger)
 
-The backend serves Swagger UI with auto-generated OpenAPI 2.0 documentation for every endpoint. This is useful for exploring the API, trying out requests, and understanding request/response schemas without reading code.
+The backend serves Swagger UI with auto-generated OpenAPI 2.0 documentation:
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET http://localhost:8080/swagger/index.html` | Interactive Swagger UI (browse in a browser) |
+| `GET http://localhost:8080/swagger/index.html` | Interactive Swagger UI |
 | `GET http://localhost:8080/swagger/doc.json` | Raw OpenAPI spec (JSON) |
 
-Open the Swagger UI in your browser:
-
-```bash
-open http://localhost:8080/swagger/index.html
-```
-
-> The spec is generated from annotations in [`api/controllers/knowledge_controller.go`](api/controllers/knowledge_controller.go) and [`main.go`](main.go) by the [`swag`](https://github.com/swaggo/swag) CLI.
-
-#### Regenerating the docs
-
-Install the CLI once (requires Go):
-
-```bash
-go install github.com/swaggo/swag/cmd/swag@latest
-```
-
-Regenerate after changing any endpoint annotations:
-
+Regenerate after changing endpoint annotations:
 ```bash
 make swagger
 ```
 
-This runs `swag init` against [`main.go`](main.go) and rewrites the generated files under [`docs/`](docs/).
-
 ---
 
-### 8. Troubleshooting
+## Troubleshooting
 
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
-| `pq: role "postgres" does not exist` | PostgreSQL user not created by Docker | Run `docker compose down -v && docker compose up -d postgres` to recreate |
-| `pq: database "go_backend" does not exist` | Database not created by Docker | Check `POSTGRES_DB` in [`docker-compose.yml`](docker-compose.yml#L30) — should be `go_backend` |
-| `pq: extension "vector" not available` | pgvector not available in image | Ensure you're using `pgvector/pgvector:pg16` (not plain `postgres:16`) |
-| `connection refused` on `:5432` | PostgreSQL container not running | Run `docker compose up -d postgres` and check with `docker compose ps` |
-| `connection refused` on `:11434` | Ollama not running | Run `ollama serve` in a separate terminal |
-| `model "llama-3.2-3b-instruct" not found` | Model not pulled in Ollama | Run `ollama pull llama-3.2-3b-instruct` |
-| Frontend shows blank page / CORS errors | Backend not running or wrong port | Ensure `go run main.go` or `docker compose up -d` is running |
+| `pq: role "postgres" does not exist` | PostgreSQL user not created | `docker compose down -v && docker compose up -d postgres` |
+| `pq: extension "vector" not available` | Wrong PostgreSQL image | Use `pgvector/pgvector:pg16` (not plain `postgres:16`) |
+| `connection refused` on `:5432` | PostgreSQL not running | `docker compose up -d postgres` |
+| `connection refused` on `:11434` | Ollama not running or still starting | `docker compose ps` — check for `ollama`, `ollama-gpu`, or `ollama-mps` |
+| `model "llama3.2:1b-instruct-q2_K" not found` | Model not pulled | `docker compose exec ollama ollama pull llama3.2:1b-instruct-q2_K` (or `ollama-gpu` for GPU) |
+| Ollama container exits immediately | Insufficient memory or port conflict | Increase Docker memory to 4 GB+; ensure port `11434` is free |
+| Frontend shows blank page / CORS errors | Backend not running | Ensure `go run main.go` or `docker compose up -d` is running |
 | `go: module ... not found` | Dependencies not downloaded | Run `go mod tidy` |
-| Uploaded document stuck on `pending` | Embedding provider not configured | The `local` embedding provider is a stub — switch to `openai` or implement a real local provider |
+| Uploaded document stuck on `pending` | Embedding model not pulled | `docker compose exec ollama ollama pull nomic-embed-text` (or `ollama-gpu` for GPU) |
+| `nvidia-container-toolkit` errors on `make run-gpu` | NVIDIA Container Toolkit not installed | Install from [NVIDIA docs](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) or use `make run` (CPU fallback) |
 
 ---
 
-### 9. Next Steps
+## Next Steps
 
 - **Switch to OpenAI embeddings** — Set `EMBEDDING_PROVIDER=openai` and add `OPENAI_API_KEY=sk-...` to your `.env`
 - **Use a remote LLM** — Set `LLM_PROVIDER=openai` and configure `LLM_MODEL=gpt-4o-mini` with your API key
-- **Tune chunking** — Experiment with [`CHUNK_STRATEGY`](#environment-variables) (`fixed`, `sentence`, `paragraph`) and [`CHUNK_SIZE`](#environment-variables) for your document types
+- **Tune chunking** — Experiment with `CHUNK_STRATEGY` (`fixed`, `sentence`, `paragraph`) and `CHUNK_SIZE`
 - **Enable LlamaIndex sidecar** — Deploy the LlamaIndex Python service for advanced indexing strategies (see [`knowledge/index/llama_index.go`](knowledge/index/llama_index.go))
-- **Production deployment** — Set `APP_ENV=production`, `APP_DEBUG=false`, and use a process manager like `supervisord` or a container orchestration platform
+- **Production deployment** — Set `APP_ENV=production`, `APP_DEBUG=false`, and use a process manager or container orchestration
 
 ## Project Structure
 

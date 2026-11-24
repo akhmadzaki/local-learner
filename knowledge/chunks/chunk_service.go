@@ -48,6 +48,13 @@ func (svc *ChunkService) SplitContent(ctx context.Context, content string, docID
 		}
 	}
 
+	// Ensure metadata is never nil (JSONB NOT NULL constraint)
+	for _, ch := range filtered {
+		if ch.Metadata == nil {
+			ch.Metadata = make(map[string]interface{})
+		}
+	}
+
 	// Persist chunks to database
 	if !svc.chunkRepo.BulkCreate(ctx, filtered) {
 		log.Printf("ChunkService: Failed to persist chunks for document %s", docID)

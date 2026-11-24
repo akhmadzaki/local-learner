@@ -28,7 +28,7 @@ export function MessageBubble({ turn }: MessageBubbleProps) {
                 {turn.sources.map((s, i) => (
                   <div key={i} className="text-xs text-surface-400 truncate">
                     <span className="text-primary-500">[{s.score.toFixed(2)}]</span>{" "}
-                    {s.documentTitle}
+                    {s.document_title}
                   </div>
                 ))}
               </div>

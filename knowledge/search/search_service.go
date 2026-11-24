@@ -20,11 +20,12 @@ type SearchService struct {
 }
 
 func NewSearchService(embedSvc *embeddings.EmbeddingService, vectorStore *vectorstore.VectorStore, db *sql.DB) *SearchService {
+	keywordSvc := NewKeywordSearch(db)
 	return &SearchService{
 		embedSvc:    embedSvc,
 		vectorStore: vectorStore,
-		hybridSvc:   NewHybridSearch(vectorStore),
-		keywordSvc:  NewKeywordSearch(db),
+		hybridSvc:   NewHybridSearch(vectorStore, embedSvc.Provider, keywordSvc),
+		keywordSvc:  keywordSvc,
 	}
 }
 
@@ -62,6 +63,11 @@ type SearchResponse struct {
 func (svc *SearchService) Search(ctx context.Context, req SearchRequest) SearchResponse {
 	start := time.Now()
 
+	// Default TopK to 10 when not provided (0 is invalid for LIMIT)
+	if req.TopK <= 0 {
+		req.TopK = 10
+	}
+
 	var resp SearchResponse
 	switch req.Mode {
 	case "vector":
@@ -83,7 +89,7 @@ func (svc *SearchService) vectorSearch(ctx context.Context, req SearchRequest) S
 	queryVector, err := svc.embedSvc.Provider.CreateEmbedding(req.Query)
 	if err != nil {
 		log.Printf("SearchService: Embedding failed: %v", err)
-		return SearchResponse{Mode: "vector"}
+		return SearchResponse{Results: make([]SearchResult, 0), Mode: "vector"}
 	}
 
 	results := svc.vectorStore.Search(ctx, queryVector, req.TopK)
@@ -94,14 +100,14 @@ func (svc *SearchService) vectorSearch(ctx context.Context, req SearchRequest) S
 func (svc *SearchService) keywordSearch(req SearchRequest) SearchResponse {
 	results := svc.keywordSvc.Search(req.Query, req.TopK, req.Filters)
 
-	var searchResults []SearchResult
+	searchResults := make([]SearchResult, 0, len(results))
 	for _, r := range results {
 		searchResults = append(searchResults, SearchResult{
-			ChunkID:       r.ChunkID,
-			DocumentID:    r.DocumentID,
-			Content:       r.Content,
-			Score:         r.Rank,
-			ScoreKeyword:  r.Rank,
+			ChunkID:      r.ChunkID,
+			DocumentID:   r.DocumentID,
+			Content:      r.Content,
+			Score:        r.Rank,
+			ScoreKeyword: r.Rank,
 		})
 	}
 
@@ -119,7 +125,7 @@ func (svc *SearchService) hybridSearch(ctx context.Context, req SearchRequest) S
 
 // toSearchResponse converts raw vector store results to the unified format.
 func (svc *SearchService) toSearchResponse(raw []vectorstore.SearchResult, mode string) SearchResponse {
-	var results []SearchResult
+	results := make([]SearchResult, 0, len(raw))
 	for _, r := range raw {
 		results = append(results, SearchResult{
 			ChunkID:    r.ChunkID,

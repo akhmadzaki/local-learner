@@ -4,18 +4,18 @@ export type AgentMode = "direct" | "reasoned" | "deep";
 
 export interface ChatRequest {
   message: string;
-  conversationId?: string;
+  conversation_id?: string;
   mode?: AgentMode;
-  streamResponse?: boolean;
+  stream_response?: boolean;
 }
 
 export interface ChatResponse {
   answer: string;
   sources: SearchResult[];
-  reasoningTrace: string;
+  reasoning_trace: string;
   confidence: number;
-  conversationId: string;
-  tokenUsage: Record<string, number>;
+  conversation_id: string;
+  token_usage: Record<string, number>;
 }
 
 export interface Conversation {

@@ -7,37 +7,71 @@ import (
 	"sort"
 	"time"
 
+	"github.com/akhmadzaki/go-backend/knowledge/embeddings"
 	"github.com/akhmadzaki/go-backend/knowledge/vectorstore"
 )
 
 // HybridSearch combines vector similarity and keyword (BM25) scores
 // using Reciprocal Rank Fusion (RRF) or weighted linear interpolation.
 type HybridSearch struct {
-	vectorStore *vectorstore.VectorStore
-	Alpha       float64 // 0 = pure keyword, 1 = pure vector
-	K           int     // RRF constant (default 60)
+	vectorStore   *vectorstore.VectorStore
+	embeddingProv embeddings.EmbeddingProvider
+	keywordSvc    *KeywordSearch
+	Alpha         float64 // 0 = pure keyword, 1 = pure vector
+	K             int     // RRF constant (default 60)
 }
 
-func NewHybridSearch(vectorStore *vectorstore.VectorStore) *HybridSearch {
+func NewHybridSearch(vectorStore *vectorstore.VectorStore, embeddingProv embeddings.EmbeddingProvider, keywordSvc *KeywordSearch) *HybridSearch {
 	return &HybridSearch{
-		vectorStore: vectorStore,
-		Alpha:       0.5,
-		K:           60,
+		vectorStore:   vectorStore,
+		embeddingProv: embeddingProv,
+		keywordSvc:    keywordSvc,
+		Alpha:         0.5,
+		K:             60,
 	}
 }
 
-// Search performs hybrid retrieval with configurable alpha weighting.
+// Search performs hybrid retrieval combining vector and keyword results.
 func (hs *HybridSearch) Search(ctx context.Context, req SearchRequest) SearchResponse {
 	start := time.Now()
+	alpha := req.HybridAlpha
+	if alpha == 0 {
+		alpha = hs.Alpha
+	}
 
-	// Get vector results (requires embedding service, stub for now)
-	log.Printf("HybridSearch: searching for query: %s", req.Query)
+	// 1. Generate query embedding
+	queryVector, err := hs.embeddingProv.CreateEmbedding(req.Query)
+	if err != nil {
+		log.Printf("HybridSearch: embedding failed: %v", err)
+		queryVector = make([]float32, hs.embeddingProv.Dimension())
+	}
 
-	// For now, return empty results since vector store needs proper setup
+	// 2. Vector search
+	rawVector := hs.vectorStore.Search(ctx, queryVector, req.TopK)
+	vectorResults := make([]SearchResult, 0, len(rawVector))
+	for _, r := range rawVector {
+		vectorResults = append(vectorResults, SearchResult{
+			ChunkID:    r.ChunkID,
+			DocumentID: r.DocumentID,
+			Content:    r.Content,
+			Score:      r.Score,
+		})
+	}
+
+	// 3. Keyword search
+	rawKeyword := hs.keywordSvc.Search(req.Query, req.TopK, req.Filters)
+	keywordResults := make([]KeywordResult, 0, len(rawKeyword))
+	for _, r := range rawKeyword {
+		keywordResults = append(keywordResults, r)
+	}
+
+	// 4. Fuse via RRF
+	fused := hs.ReciprocalRankFusion(vectorResults, keywordResults, req.TopK, alpha)
+
 	elapsed := time.Since(start).Milliseconds()
 	return SearchResponse{
-		Results:     []SearchResult{},
-		TotalHits:   0,
+		Results:     fused,
+		TotalHits:   len(fused),
 		QueryTimeMs: elapsed,
 		Mode:        "hybrid",
 	}

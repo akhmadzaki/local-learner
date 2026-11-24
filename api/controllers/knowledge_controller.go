@@ -49,7 +49,7 @@ func NewKnowledgeController(cfg *config.Config, db *sql.DB) *KnowledgeController
 		cfg.Embeddings.Provider,
 		cfg.Embeddings.Model,
 		cfg.Embeddings.Dim,
-		cfg.LLM.BaseURL,
+		cfg.Embeddings.BaseURL,
 		"",
 	)
 
@@ -90,17 +90,17 @@ func NewKnowledgeController(cfg *config.Config, db *sql.DB) *KnowledgeController
 	searchSvc := search.NewSearchService(embedSvc, vecStore, db)
 
 	// ── Index service ─────────────────────────────────────────────────────
-	idxSvc := index.NewIndexService(embedSvc, vecStore)
+	idxSvc := index.NewIndexService(embedSvc, vecStore, db)
 
 	// ── Agent / Chat ──────────────────────────────────────────────────────
 	convManager := agent.NewConversationManager(convRepo, cfg.LLM.MaxHistory)
 	agentSvc := agent.NewAgentService(
 		searchSvc,
 		convManager,
-		cfg.LLM.Provider,
 		cfg.LLM.Model,
 		cfg.LLM.MaxTokens,
 		cfg.LLM.Temperature,
+		cfg.LLM.BaseURL,
 	)
 
 	// ── Pipeline ──────────────────────────────────────────────────────────

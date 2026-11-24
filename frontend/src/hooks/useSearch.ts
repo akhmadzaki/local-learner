@@ -12,7 +12,7 @@ export function useSearch() {
     setLoading(true);
     setError(null);
     try {
-      const res = await searchApi.search({ query, mode, topK: 10 });
+      const res = await searchApi.search({ query, mode, top_k: 10 });
       setResults(res);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Search failed");

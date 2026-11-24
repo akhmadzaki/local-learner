@@ -16,6 +16,7 @@ type DocumentRepository interface {
 	FindByID(ctx context.Context, id string) *models.Document
 	FindAll(ctx context.Context, offset int, limit int) []*models.Document
 	UpdateStatus(ctx context.Context, id string, status string) bool
+	UpdateChunkCount(ctx context.Context, id string, count int) bool
 	Delete(ctx context.Context, id string) bool
 }
 
@@ -28,7 +29,7 @@ type ChunkServiceInterface interface {
 // EmbeddingServiceInterface defines the interface for embedding operations.
 type EmbeddingServiceInterface interface {
 	GenerateEmbeddings(ctx context.Context, chunks []*models.Chunk) []embeddings.EmbeddingResult
-	StoreVectors(ctx context.Context, results []embeddings.EmbeddingResult)
+	StoreVectors(ctx context.Context, results []embeddings.EmbeddingResult) bool
 	DeleteVectorsByDocument(ctx context.Context, docID string)
 }
 
@@ -64,9 +65,26 @@ func (svc *DocumentService) IngestDocument(ctx context.Context, title string, co
 	}
 
 	chunks := svc.chunkSvc.SplitContent(ctx, content, doc.ID)
+	log.Printf("Document splitted")
+
+	// Update chunk count on the document
+	svc.docRepo.UpdateChunkCount(ctx, doc.ID, len(chunks))
 
 	embedResults := svc.embedSvc.GenerateEmbeddings(ctx, chunks)
-	svc.embedSvc.StoreVectors(ctx, embedResults)
+	log.Printf("Embeddings generated")
+
+	if len(embedResults) == 0 {
+		log.Printf("DocumentService: No embeddings generated for document %s", doc.ID)
+		svc.docRepo.UpdateStatus(ctx, doc.ID, "partial")
+		return IngestResult{DocumentID: doc.ID, ChunkCount: len(chunks), Status: "partial", Error: "no embeddings generated"}
+	}
+
+	if !svc.embedSvc.StoreVectors(ctx, embedResults) {
+		log.Printf("DocumentService: Failed to store vectors for document %s", doc.ID)
+		svc.docRepo.UpdateStatus(ctx, doc.ID, "partial")
+		return IngestResult{DocumentID: doc.ID, ChunkCount: len(chunks), Status: "partial", Error: "failed to store vectors"}
+	}
+	log.Printf("Vector stored")
 
 	svc.docRepo.UpdateStatus(ctx, doc.ID, "indexed")
 

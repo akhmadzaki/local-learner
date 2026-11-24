@@ -2,21 +2,99 @@
 #  Go-Backend  –  Local AI Knowledge Base / RAG System
 # ────────────────────────────────────────────────────────────────────────────────
 #  Services:
-#    postgres   – PostgreSQL 16 + pgvector extension
-#    backend    – Go API server
-#    frontend   – React (Vite) SPA served via Nginx
-#    ollama     – (optional) local LLM inference server
+#    postgres      – PostgreSQL 16 + pgvector extension
+#    ollama        – Local LLM inference (containerized, no host install needed)
+#    backend       – Go API server (production build)
+#    frontend      – React (Vite) SPA served via Nginx (production build)
 #
 #  Quick start:
-#    docker compose up -d
+#    make run
 #    # Open http://localhost:3000
-#
-#  With local LLM (uncomment ollama section first):
-#    docker compose --profile local-llm up -d
-#    docker compose exec ollama ollama pull llama-3.2-3b-instruct
 # ────────────────────────────────────────────────────────────────────────────────
 
 services:
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Ollama — Local LLM inference (containerized, no host install needed)
+  # ═══════════════════════════════════════════════════════════════════════════
+  #
+  #  GPU backend is selected via Docker Compose profiles:
+  #
+  #    CPU  (default) : docker compose --profile cpu up
+  #    NVIDIA GPU     : docker compose --profile nvidia up
+  #    Apple MPS      : docker compose --profile mps up
+  #
+  #  Only ONE profile should be active at a time.  The Makefile handles this
+  #  automatically — see `make run` (CPU) and `make run-gpu` (NVIDIA).
+
+  # ── Ollama (CPU) ─────────────────────────────────────────────────────────
+  ollama:
+    profiles: ["cpu"]
+    image: ollama/ollama:latest
+    container_name: go-backend-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ── Ollama (NVIDIA GPU) ──────────────────────────────────────────────────
+  # Requires: nvidia-container-toolkit installed on the host.
+  # Activate: docker compose --profile nvidia up
+  ollama-gpu:
+    profiles: ["nvidia"]
+    image: ollama/ollama:latest
+    container_name: go-backend-ollama-gpu
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ── Ollama (Apple MPS / Metal) ───────────────────────────────────────────
+  # Apple Silicon (macOS): Ollama uses Metal by default — no special Docker
+  # config is needed.  The image runs under Rosetta 2 emulation automatically.
+  # Activate: docker compose --profile mps up
+  ollama-mps:
+    profiles: ["mps"]
+    image: ollama/ollama:latest
+    container_name: go-backend-ollama-mps
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   # ── PostgreSQL + pgvector ────────────────────────────────────────────────────
   postgres:
     image: pgvector/pgvector:pg16
@@ -35,8 +113,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: "1G"
 
-  # ── Go API Backend ───────────────────────────────────────────────────────────
+  # ── Go API Backend (production) ─────────────────────────────────────────────
   backend:
     build:
       context: .
@@ -57,13 +140,14 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-postgres}
       DB_AUTO_MIGRATE: ${DB_AUTO_MIGRATE:-true}
 
-      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
-      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
-      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-ollama}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-qwen3-embedding:4b}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-768}
+      EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://ollama:11434}
       EMBEDDING_DEVICE: ${EMBEDDING_DEVICE:-cpu}
 
       LLM_PROVIDER: ${LLM_PROVIDER:-local}
-      LLM_MODEL: ${LLM_MODEL:-llama-3.2-3b-instruct}
+      LLM_MODEL: ${LLM_MODEL:-llama3.2:3b}
       LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
       LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
       LLM_MAX_HISTORY: ${LLM_MAX_HISTORY:-20}
@@ -73,11 +157,18 @@ services:
       CHUNK_SIZE: ${CHUNK_SIZE:-512}
       CHUNK_OVERLAP: ${CHUNK_OVERLAP:-64}
       CHUNK_MIN_LENGTH: ${CHUNK_MIN_LENGTH:-20}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: "512M"
 
-  # ── React Frontend (Nginx) ──────────────────────────────────────────────────
+  # ── React Frontend (production, Nginx) ─────────────────────────────────────
   frontend:
     build:
       context: ./frontend
@@ -88,28 +179,12 @@ services:
       - "${FRONTEND_PORT:-3000}:80"
     depends_on:
       - backend
-
-  # ── Ollama (local LLM) – disabled by default ────────────────────────────────
-  # Uncomment to enable. After starting, pull a model:
-  #   docker compose exec ollama ollama pull llama-3.2-3b-instruct
-  ollama:
-    image: ollama/ollama:latest
-    container_name: go-backend-ollama
-    profiles:
-      - local-llm
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
     deploy:
       resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+        limits:
+          cpus: "0.5"
+          memory: "256M"
 
 volumes:
   pgdata:
-  ollama_data:   # uncomment when using Ollama
+  ollama_data:

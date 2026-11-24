@@ -68,8 +68,24 @@ func NewSentenceChunker(maxSentences, chunkOverlap int) *SentenceChunker {
 }
 
 func (c *SentenceChunker) Split(text string, docID string, meta map[string]interface{}) []*models.Chunk {
-	re := regexp.MustCompile(`(?<=[.!?])\s+`)
-	sentences := re.Split(text, -1)
+	// Go's regexp (RE2) does not support lookbehind assertions, so we use
+	// FindAllStringIndex to locate sentence boundaries manually.
+	re := regexp.MustCompile(`[.!?]\s+`)
+	matches := re.FindAllStringIndex(text, -1)
+
+	sentences := make([]string, 0, len(matches)+1)
+	lastEnd := 0
+	for _, m := range matches {
+		start := m[0] // position of the punctuation character
+		end := m[1]   // position after the trailing whitespace
+		// Include the punctuation but not the whitespace
+		sentences = append(sentences, text[lastEnd:start+1])
+		lastEnd = end
+	}
+	// Append any remaining text after the last sentence boundary
+	if lastEnd < len(text) {
+		sentences = append(sentences, text[lastEnd:])
+	}
 	var chunks []*models.Chunk
 	idx := 0
 	i := 0

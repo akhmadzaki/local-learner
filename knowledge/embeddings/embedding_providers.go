@@ -62,7 +62,7 @@ func (p *OpenAIEmbeddingProvider) CreateEmbedding(text string) ([]float32, error
 
 	rawData, ok := data["data"].([]interface{})
 	if !ok || len(rawData) == 0 {
-		return nil, err
+		return nil, fmt.Errorf("OpenAI API response missing 'data' array")
 	}
 
 	rawEmbedding, ok := rawData[0].(map[string]interface{})["embedding"].([]interface{})

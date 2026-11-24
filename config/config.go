@@ -35,9 +35,10 @@ type DatabaseConfig struct {
 // ── Embeddings ────────────────────────────────────────────────────────────────
 
 type EmbeddingsConfig struct {
-	Provider string // "local" | "openai"
+	Provider string // "local" | "openai" | "ollama"
 	Model    string
 	Dim      int
+	BaseURL  string // Ollama or OpenAI-compatible endpoint
 	Device   string // "cpu" | "cuda" | "mps"
 }
 
@@ -84,7 +85,7 @@ func Load() Config {
 			Port:            getEnvInt("DB_PORT", 5432),
 			Name:            getEnv("DB_NAME", "go_backend"),
 			User:            getEnv("DB_USER", "postgres"),
-			Password:        getEnv("DB_PASSWORD", ""),
+			Password:        getEnv("DB_PASSWORD", "postgres"),
 			AutoMigrate:     getEnv("DB_AUTO_MIGRATE", "true") == "true",
 			MaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", 25),
 			MaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", 5),
@@ -92,13 +93,14 @@ func Load() Config {
 		},
 		Embeddings: EmbeddingsConfig{
 			Provider: getEnv("EMBEDDING_PROVIDER", "local"),
-			Model:    getEnv("EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
-			Dim:      getEnvInt("EMBEDDING_DIMENSION", 384),
+			Model:    getEnv("EMBEDDING_MODEL", "qwen3-embedding:4b"),
+			Dim:      getEnvInt("EMBEDDING_DIMENSION", 768),
+			BaseURL:  getEnv("EMBEDDING_BASE_URL", "http://localhost:11434"),
 			Device:   getEnv("EMBEDDING_DEVICE", "cpu"),
 		},
 		LLM: LLMConfig{
 			Provider:    getEnv("LLM_PROVIDER", "local"),
-			Model:       getEnv("LLM_MODEL", "llama-3.2-3b-instruct"),
+			Model:       getEnv("LLM_MODEL", "llama3.2:3b"),
 			MaxTokens:   getEnvInt("LLM_MAX_TOKENS", 4096),
 			Temperature: getEnvFloat("LLM_TEMPERATURE", 0.1),
 			MaxHistory:  getEnvInt("LLM_MAX_HISTORY", 20),
