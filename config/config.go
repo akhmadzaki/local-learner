@@ -62,6 +62,12 @@ type ChunkingConfig struct {
 	MinChunkLength int
 }
 
+// ── Upload (File Uploads) ──────────────────────────────────────────────────────
+
+type UploadConfig struct {
+	MaxFileSize int // bytes (default: 10MB)
+}
+
 // ── Top-level Config ──────────────────────────────────────────────────────────
 
 type Config struct {
@@ -70,6 +76,7 @@ type Config struct {
 	Embeddings EmbeddingsConfig
 	LLM        LLMConfig
 	Chunking   ChunkingConfig
+	Upload     UploadConfig
 }
 
 func Load() Config {
@@ -111,6 +118,9 @@ func Load() Config {
 			ChunkSize:      getEnvInt("CHUNK_SIZE", 512),
 			ChunkOverlap:   getEnvInt("CHUNK_OVERLAP", 64),
 			MinChunkLength: getEnvInt("CHUNK_MIN_LENGTH", 20),
+		},
+		Upload: UploadConfig{
+			MaxFileSize: getEnvInt("UPLOAD_MAX_FILE_SIZE", 10*1024*1024), // 10MB default
 		},
 	}
 }

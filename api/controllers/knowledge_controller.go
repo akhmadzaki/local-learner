@@ -31,6 +31,7 @@ type KnowledgeController struct {
 	vecStore  *vectorstore.VectorStore
 	pipeline  *pipeline.RAGPipeline
 	orch      *pipeline.PipelineOrchestrator
+	docProc   *documents.DocumentProcessor
 }
 
 // NewKnowledgeController creates a fully wired controller with all dependencies
@@ -107,6 +108,9 @@ func NewKnowledgeController(cfg *config.Config, db *sql.DB) *KnowledgeController
 	ragPipeline := pipeline.NewRAGPipeline(docSvc, chunkSvc, embedSvc, idxSvc)
 	orch := pipeline.NewPipelineOrchestrator(ragPipeline, 3)
 
+	// ── Document processor ──────────────────────────────────────────────────
+	docProc := documents.NewDocumentProcessor(cfg.Upload.MaxFileSize)
+
 	log.Println("KnowledgeController: all dependencies wired successfully")
 	return &KnowledgeController{
 		cfg:       cfg,
@@ -118,6 +122,7 @@ func NewKnowledgeController(cfg *config.Config, db *sql.DB) *KnowledgeController
 		vecStore:  vecStore,
 		pipeline:  ragPipeline,
 		orch:      orch,
+		docProc:   docProc,
 	}
 }
 
@@ -144,6 +149,72 @@ func (ctrl *KnowledgeController) IngestDocument(w http.ResponseWriter, r *http.R
 
 	result := ctrl.docSvc.IngestDocument(r.Context(), req.Title, req.Content, req.Source)
 	helpers.RespondCreated(w, result)
+}
+
+// UploadDocument godoc
+// @Summary      Upload a document file (PDF, Markdown, HTML, TXT)
+// @Description  Accepts a file upload via multipart/form-data, extracts text
+// @Description  content from the file, then ingests it into the knowledge base.
+// @Tags         documents
+// @Accept       mpfd
+// @Produce      json
+// @Param        file    formData  file    true  "Document file to upload (pdf, md, html, txt)"
+// @Param        title   formData  string false "Optional document title (defaults to filename)"
+// @Param        source  formData  string false "Optional source label (defaults to 'upload')"
+// @Success      201     {object}  documents.IngestResult  "Ingested document summary"
+// @Failure      400     {object}  helpers.ErrorResponse   "Invalid file or missing data"
+// @Failure      413     {object}  helpers.ErrorResponse   "File too large"
+// @Failure      500     {object}  helpers.ErrorResponse   "Internal server error"
+// @Router       /documents/upload [post]
+func (ctrl *KnowledgeController) UploadDocument(w http.ResponseWriter, r *http.Request) {
+	// Limit request body size to MaxFileSize + a small buffer for form overhead
+	r.Body = http.MaxBytesReader(w, r.Body, int64(ctrl.cfg.Upload.MaxFileSize)+1024*1024)
+
+	if err := r.ParseMultipartForm(int64(ctrl.cfg.Upload.MaxFileSize) + 1024*1024); err != nil {
+		helpers.RespondError(w, http.StatusBadRequest, "File too large or invalid multipart form")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		helpers.RespondError(w, http.StatusBadRequest, "Missing file in request")
+		return
+	}
+	defer file.Close()
+
+	// Read the uploaded file into memory
+	data := make([]byte, header.Size)
+	if _, err := file.Read(data); err != nil {
+		helpers.RespondError(w, http.StatusInternalServerError, "Failed to read uploaded file")
+		return
+	}
+
+	// Determine title: use explicit form field or fall back to filename
+	title := r.FormValue("title")
+	if title == "" {
+		title = header.Filename
+	}
+
+	source := r.FormValue("source")
+	if source == "" {
+		source = "upload"
+	}
+
+	// Process the file through the document processor (extract text, validate)
+	result := ctrl.docProc.ProcessFile(header.Filename, data)
+	if result == nil {
+		helpers.RespondError(w, http.StatusBadRequest, "Unsupported file type or file exceeds size limit")
+		return
+	}
+
+	if result.Content == "" {
+		helpers.RespondError(w, http.StatusBadRequest, "No text content could be extracted from the file")
+		return
+	}
+
+	// Ingest the extracted content into the knowledge base
+	ingestResult := ctrl.docSvc.IngestDocument(r.Context(), title, result.Content, source)
+	helpers.RespondCreated(w, ingestResult)
 }
 
 // ListDocuments godoc

@@ -1,11 +1,14 @@
 package documents
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"fmt"
 	"log"
 	"regexp"
 	"strings"
+
+	"github.com/ledongthuc/pdf"
 )
 
 // DocumentProcessor handles file parsing, text extraction, and format conversion
@@ -91,10 +94,44 @@ func (dp *DocumentProcessor) ComputeChecksum(data []byte) string {
 	return fmt.Sprintf("%x", hash)
 }
 
-// ExtractPDF is a stub for PDF text extraction.
+// ExtractPDF extracts text content from a PDF byte stream using the ledongthuc/pdf library.
 func (dp *DocumentProcessor) ExtractPDF(data []byte) string {
-	log.Printf("DocumentProcessor: PDF extraction not yet implemented")
-	return ""
+	reader := bytes.NewReader(data)
+	pdfReader, err := pdf.NewReader(reader, int64(len(data)))
+	if err != nil {
+		log.Printf("DocumentProcessor: Failed to create PDF reader: %v", err)
+		return ""
+	}
+
+	var textBuilder strings.Builder
+	numPages := pdfReader.NumPage()
+
+	for i := 1; i <= numPages; i++ {
+		page := pdfReader.Page(i)
+
+		// Get fonts used on this page for proper text extraction
+		fonts := make(map[string]*pdf.Font)
+		for _, fontName := range page.Fonts() {
+			f := page.Font(fontName)
+			fonts[fontName] = &f
+		}
+
+		pageText, err := page.GetPlainText(fonts)
+		if err != nil {
+			log.Printf("DocumentProcessor: Failed to extract text from page %d: %v", i, err)
+			continue
+		}
+
+		textBuilder.WriteString(pageText)
+		textBuilder.WriteString("\n")
+	}
+
+	extracted := strings.TrimSpace(textBuilder.String())
+	if extracted == "" {
+		log.Printf("DocumentProcessor: No text extracted from PDF (%d pages)", numPages)
+	}
+
+	return extracted
 }
 
 // ExtractMarkdown strips Markdown formatting and returns plain text.

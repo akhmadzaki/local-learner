@@ -20,6 +20,7 @@ func RegisterRoutes(cfg *config.Config, db *sql.DB) http.Handler {
 
 	// ── Document CRUD ─────────────────────────────────────────────────────
 	mux.HandleFunc("POST /api/v1/documents", ctrl.IngestDocument)
+	mux.HandleFunc("POST /api/v1/documents/upload", ctrl.UploadDocument)
 	mux.HandleFunc("GET /api/v1/documents", ctrl.ListDocuments)
 	mux.HandleFunc("GET /api/v1/documents/{id}", ctrl.GetDocument)
 	mux.HandleFunc("DELETE /api/v1/documents/{id}", ctrl.DeleteDocument)
