@@ -1,0 +1,640 @@
+basePath: /api/v1
+definitions:
+  agent.AgentResponse:
+    properties:
+      answer:
+        type: string
+      confidence:
+        type: number
+      conversation_id:
+        type: string
+      reasoning_trace:
+        type: string
+      sources:
+        items:
+          $ref: '#/definitions/search.SearchResult'
+        type: array
+      token_usage:
+        additionalProperties:
+          type: integer
+        type: object
+    type: object
+  agent.ConversationTurn:
+    properties:
+      content:
+        type: string
+      role:
+        description: '"user" | "assistant" | "system"'
+        type: string
+      sources:
+        items:
+          additionalProperties: true
+          type: object
+        type: array
+      timestamp:
+        type: integer
+      token_count:
+        type: integer
+    type: object
+  documents.IngestResult:
+    properties:
+      chunk_count:
+        type: integer
+      document_id:
+        type: string
+      error:
+        type: string
+      status:
+        description: '"indexed", "partial", "failed"'
+        type: string
+    type: object
+  dto.ChatRequestDTO:
+    properties:
+      conversation_id:
+        type: string
+      message:
+        type: string
+      mode:
+        description: '"direct", "reasoned", "deep"'
+        type: string
+      stream_response:
+        type: boolean
+    type: object
+  dto.IngestDocumentRequest:
+    properties:
+      content:
+        type: string
+      source:
+        type: string
+      title:
+        type: string
+    type: object
+  helpers.ErrorResponse:
+    properties:
+      error:
+        example: Bad Request
+        type: string
+      message:
+        example: Invalid request body
+        type: string
+    type: object
+  index.IndexStats:
+    properties:
+      index_health:
+        description: '"healthy", "degraded", "unhealthy"'
+        type: string
+      last_indexed_at:
+        type: string
+      total_chunks:
+        type: integer
+      total_documents:
+        type: integer
+      total_vectors:
+        type: integer
+    type: object
+  models.Document:
+    properties:
+      chunk_count:
+        type: integer
+      created_at:
+        type: string
+      id:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      source:
+        description: '"upload", "web", "api", "scrape"'
+        type: string
+      status:
+        description: '"pending", "processing", "indexed", "failed"'
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  search.SearchRequest:
+    properties:
+      filters:
+        additionalProperties: true
+        type: object
+      hybrid_alpha:
+        description: weight for vector vs keyword
+        type: number
+      min_score:
+        type: number
+      mode:
+        description: '"vector", "keyword", "hybrid"'
+        type: string
+      query:
+        type: string
+      top_k:
+        type: integer
+    type: object
+  search.SearchResponse:
+    properties:
+      mode:
+        type: string
+      query_time_ms:
+        type: integer
+      results:
+        items:
+          $ref: '#/definitions/search.SearchResult'
+        type: array
+      total_hits:
+        type: integer
+    type: object
+  search.SearchResult:
+    properties:
+      chunk_id:
+        type: string
+      content:
+        type: string
+      document_id:
+        type: string
+      document_title:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      score:
+        type: number
+      score_keyword:
+        type: number
+      score_vector:
+        type: number
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: RAG-based knowledge base with document ingestion, hybrid search, and
+    agentic chat.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Local AI Knowledge Base API
+  version: "1.0"
+paths:
+  /chat:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Sends a message to the agent, optionally continuing an existing
+        conversation if a conversation_id is provided.
+      parameters:
+      - description: Chat message
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ChatRequestDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Agent reply with sources and reasoning
+          schema:
+            $ref: '#/definitions/agent.AgentResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Start a new chat
+      tags:
+      - chat
+  /chat/{convID}:
+    delete:
+      description: Removes a conversation and all its stored turns.
+      parameters:
+      - description: Conversation UUID
+        in: path
+        name: convID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deletion confirmation
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+        "404":
+          description: Conversation not found
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Delete a conversation
+      tags:
+      - chat
+    get:
+      description: Returns the full message history for a conversation.
+      parameters:
+      - description: Conversation UUID
+        in: path
+        name: convID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Conversation history
+          schema:
+            items:
+              $ref: '#/definitions/agent.ConversationTurn'
+            type: array
+        "404":
+          description: Conversation not found
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Get conversation history
+      tags:
+      - chat
+    post:
+      consumes:
+      - application/json
+      description: Sends a follow-up message within an existing conversation.
+      parameters:
+      - description: Conversation UUID
+        in: path
+        name: convID
+        required: true
+        type: string
+      - description: Chat message
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.ChatRequestDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Agent reply with sources and reasoning
+          schema:
+            $ref: '#/definitions/agent.AgentResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+        "404":
+          description: Conversation not found
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Continue a conversation
+      tags:
+      - chat
+  /conversations:
+    get:
+      description: Returns all conversations with metadata.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of conversations
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: List conversations
+      tags:
+      - chat
+  /documents:
+    get:
+      description: Returns a paginated list of documents in the knowledge base.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of documents
+          schema:
+            items:
+              $ref: '#/definitions/models.Document'
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: List documents
+      tags:
+      - documents
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Accepts raw text content, splits it into chunks, generates
+        embeddings, and stores everything for hybrid search.
+      parameters:
+      - description: Document content to ingest
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.IngestDocumentRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Ingested document summary
+          schema:
+            $ref: '#/definitions/documents.IngestResult'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Ingest a new document
+      tags:
+      - documents
+  /documents/{id}:
+    delete:
+      description: Removes a document and all its associated chunks and vectors.
+      parameters:
+      - description: Document UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Deletion confirmation
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+        "404":
+          description: Document not found
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Delete a document
+      tags:
+      - documents
+    get:
+      description: Returns a single document and its metadata.
+      parameters:
+      - description: Document UUID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Document details
+          schema:
+            $ref: '#/definitions/models.Document'
+        "404":
+          description: Document not found
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Get a document by ID
+      tags:
+      - documents
+  /health:
+    get:
+      description: Returns service health, dependency status, and version.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service health
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service degraded
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Health check
+      tags:
+      - system
+  /index/build:
+    post:
+      description: Triggers a full re-index of all documents in the vector store.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Indexing confirmation
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Build search index
+      tags:
+      - index
+  /index/stats:
+    get:
+      description: Returns counts and health of the current vector index.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Index statistics
+          schema:
+            $ref: '#/definitions/index.IndexStats'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Get index statistics
+      tags:
+      - index
+  /pipeline/ingest:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Enqueues an async ingestion job that processes a document
+        through the full pipeline (chunking, embeddings, indexing).
+      parameters:
+      - description: Document to process
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/dto.IngestDocumentRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Queued job details
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Queue a pipeline ingestion job
+      tags:
+      - pipeline
+  /pipeline/jobs/{jobID}:
+    get:
+      description: Returns the current status of an async pipeline job.
+      parameters:
+      - description: Pipeline job UUID
+        in: path
+        name: jobID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Job status
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Job not found
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Get pipeline job status
+      tags:
+      - pipeline
+  /search:
+    post:
+      consumes:
+      - application/json
+      description: |-
+        Performs a search over the knowledge base using the mode
+        specified in the request (vector, keyword, or hybrid).
+      parameters:
+      - description: Search parameters
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/search.SearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ranked search results
+          schema:
+            $ref: '#/definitions/search.SearchResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Search the knowledge base
+      tags:
+      - search
+  /search/hybrid:
+    post:
+      consumes:
+      - application/json
+      description: Combines vector and keyword retrieval with configurable weighting.
+      parameters:
+      - description: Search parameters (mode is overridden to hybrid)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/search.SearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Hybrid search results
+          schema:
+            $ref: '#/definitions/search.SearchResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Hybrid search
+      tags:
+      - search
+  /search/keyword:
+    post:
+      consumes:
+      - application/json
+      description: Performs full-text / BM25 style keyword search via PostgreSQL.
+      parameters:
+      - description: Search parameters (mode is overridden to keyword)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/search.SearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Keyword search results
+          schema:
+            $ref: '#/definitions/search.SearchResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Keyword search
+      tags:
+      - search
+  /search/vector:
+    post:
+      consumes:
+      - application/json
+      description: Performs pure semantic (embedding-based) vector search.
+      parameters:
+      - description: Search parameters (mode is overridden to vector)
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/search.SearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Vector search results
+          schema:
+            $ref: '#/definitions/search.SearchResponse'
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/helpers.ErrorResponse'
+      summary: Vector search
+      tags:
+      - search
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

@@ -1,0 +1,101 @@
+package search
+
+import (
+	"context"
+	"log"
+	"math"
+	"sort"
+	"time"
+
+	"github.com/akhmadzaki/go-backend/knowledge/vectorstore"
+)
+
+// HybridSearch combines vector similarity and keyword (BM25) scores
+// using Reciprocal Rank Fusion (RRF) or weighted linear interpolation.
+type HybridSearch struct {
+	vectorStore *vectorstore.VectorStore
+	Alpha       float64 // 0 = pure keyword, 1 = pure vector
+	K           int     // RRF constant (default 60)
+}
+
+func NewHybridSearch(vectorStore *vectorstore.VectorStore) *HybridSearch {
+	return &HybridSearch{
+		vectorStore: vectorStore,
+		Alpha:       0.5,
+		K:           60,
+	}
+}
+
+// Search performs hybrid retrieval with configurable alpha weighting.
+func (hs *HybridSearch) Search(ctx context.Context, req SearchRequest) SearchResponse {
+	start := time.Now()
+
+	// Get vector results (requires embedding service, stub for now)
+	log.Printf("HybridSearch: searching for query: %s", req.Query)
+
+	// For now, return empty results since vector store needs proper setup
+	elapsed := time.Since(start).Milliseconds()
+	return SearchResponse{
+		Results:     []SearchResult{},
+		TotalHits:   0,
+		QueryTimeMs: elapsed,
+		Mode:        "hybrid",
+	}
+}
+
+// ReciprocalRankFusion merges two ranked lists using the RRF formula:
+//
+//	score(d) = α * Σ(1/(k + r_v(d))) + (1-α) * Σ(1/(k + r_k(d)))
+func (hs *HybridSearch) ReciprocalRankFusion(vector []SearchResult, keyword []KeywordResult, topK int, alpha float64) []SearchResult {
+	scores := make(map[string]float64)
+	details := make(map[string]SearchResult)
+
+	// Score vector results
+	for i, r := range vector {
+		rank := i + 1
+		scores[r.ChunkID] += alpha * (1.0 / float64(hs.K+rank))
+		r.ScoreVector = 1.0 / float64(hs.K+rank)
+		details[r.ChunkID] = r
+	}
+
+	// Score keyword results
+	for i, r := range keyword {
+		rank := i + 1
+		scores[r.ChunkID] += (1.0 - alpha) * (1.0 / float64(hs.K+rank))
+		if existing, ok := details[r.ChunkID]; ok {
+			existing.ScoreKeyword = 1.0 / float64(hs.K+rank)
+			details[r.ChunkID] = existing
+		} else {
+			details[r.ChunkID] = SearchResult{
+				ChunkID:      r.ChunkID,
+				DocumentID:   r.DocumentID,
+				Content:      r.Content,
+				ScoreKeyword: 1.0 / float64(hs.K+rank),
+			}
+		}
+	}
+
+	// Sort by fused score descending
+	type scoredItem struct {
+		id    string
+		score float64
+	}
+	var items []scoredItem
+	for id, score := range scores {
+		items = append(items, scoredItem{id, score})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].score > items[j].score
+	})
+
+	// Take topK
+	topK = int(math.Min(float64(topK), float64(len(items))))
+	var results []SearchResult
+	for i := 0; i < topK; i++ {
+		r := details[items[i].id]
+		r.Score = items[i].score
+		results = append(results, r)
+	}
+
+	return results
+}

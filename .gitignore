@@ -1,0 +1,36 @@
+# Dependencies
+/go.sum
+
+# Environment
+.env
+!.env.example
+
+# Build output
+/build/
+/dist/
+/out/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/logs/
+
+# Temp
+/tmp/
+/scratch/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.next/
+frontend/*.tsbuildinfo

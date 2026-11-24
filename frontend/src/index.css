@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Custom scrollbar ──────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-400);
+  border-radius: 3px;
+}
+
+/* ── Markdown content in chat ──────────────────────────────────────────────── */
+.prose {
+  max-width: none;
+  line-height: 1.75;
+}
+.prose code {
+  @apply font-mono text-sm bg-surface-100 rounded px-1.5;
+}
+.prose pre {
+  @apply bg-surface-200 rounded-lg p-4 overflow-x-auto;
+}
+
+/* ── Transitions ──────────────────────────────────────────────────────────── */
+.fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Reasoning trace toggle ────────────────────────────────────────────────── */
+.reasoning-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s ease;
+}
+.reasoning-collapse.open {
+  grid-template-rows: 1fr;
+}

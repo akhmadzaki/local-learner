@@ -1,0 +1,115 @@
+# ────────────────────────────────────────────────────────────────────────────────
+#  Go-Backend  –  Local AI Knowledge Base / RAG System
+# ────────────────────────────────────────────────────────────────────────────────
+#  Services:
+#    postgres   – PostgreSQL 16 + pgvector extension
+#    backend    – Go API server
+#    frontend   – React (Vite) SPA served via Nginx
+#    ollama     – (optional) local LLM inference server
+#
+#  Quick start:
+#    docker compose up -d
+#    # Open http://localhost:3000
+#
+#  With local LLM (uncomment ollama section first):
+#    docker compose --profile local-llm up -d
+#    docker compose exec ollama ollama pull llama-3.2-3b-instruct
+# ────────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL + pgvector ────────────────────────────────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: go-backend-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: go_backend
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Go API Backend ───────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: go-backend-api
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:${APP_PORT:-8080}"
+    environment:
+      APP_PORT: ${APP_PORT:-8080}
+      APP_ENV: ${APP_ENV:-development}
+      APP_DEBUG: ${APP_DEBUG:-true}
+
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: go_backend
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_AUTO_MIGRATE: ${DB_AUTO_MIGRATE:-true}
+
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-384}
+      EMBEDDING_DEVICE: ${EMBEDDING_DEVICE:-cpu}
+
+      LLM_PROVIDER: ${LLM_PROVIDER:-local}
+      LLM_MODEL: ${LLM_MODEL:-llama-3.2-3b-instruct}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-4096}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
+      LLM_MAX_HISTORY: ${LLM_MAX_HISTORY:-20}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434}
+
+      CHUNK_STRATEGY: ${CHUNK_STRATEGY:-sentence}
+      CHUNK_SIZE: ${CHUNK_SIZE:-512}
+      CHUNK_OVERLAP: ${CHUNK_OVERLAP:-64}
+      CHUNK_MIN_LENGTH: ${CHUNK_MIN_LENGTH:-20}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── React Frontend (Nginx) ──────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: go-backend-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
+
+  # ── Ollama (local LLM) – disabled by default ────────────────────────────────
+  # Uncomment to enable. After starting, pull a model:
+  #   docker compose exec ollama ollama pull llama-3.2-3b-instruct
+  ollama:
+    image: ollama/ollama:latest
+    container_name: go-backend-ollama
+    profiles:
+      - local-llm
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  pgdata:
+  ollama_data:   # uncomment when using Ollama

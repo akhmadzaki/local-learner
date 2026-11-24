@@ -1,0 +1,60 @@
+import { useState, useEffect } from "react";
+import { api } from "../../api/client";
+
+interface IndexStats {
+  totalDocuments: number;
+  totalChunks: number;
+  totalVectors: number;
+  lastIndexedAt: string;
+  indexHealth: "healthy" | "degraded" | "unhealthy";
+}
+
+export function KnowledgeBaseStats() {
+  const [stats, setStats] = useState<IndexStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get<IndexStats>("/index/stats")
+      .then(setStats)
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <section>
+      <h1 className="text-lg font-semibold text-surface-800 mb-4">Knowledge Base</h1>
+
+      {loading && <div className="text-surface-400 text-sm">Loading stats…</div>}
+
+      {stats && (
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <StatCard label="Documents" value={stats.totalDocuments} />
+          <StatCard label="Chunks" value={stats.totalChunks} />
+          <StatCard label="Vectors" value={stats.totalVectors} />
+          <StatCard
+            label="Index Health"
+            value={stats.indexHealth}
+            color={stats.indexHealth === "healthy" ? "text-green-600" : "text-red-600"}
+          />
+        </div>
+      )}
+
+      <div className="mt-4">
+        <button
+          onClick={() => api.post("/index/build", {})}
+          className="px-4 py-2 bg-primary-500 text-white rounded-lg text-sm"
+        >
+          Rebuild Index
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function StatCard({ label, value, color = "text-surface-800" }: { label: string; value: string | number; color?: string }) {
+  return (
+    <div className="p-4 rounded-lg border border-surface-200 bg-white">
+      <div className="text-xs text-surface-500 uppercase tracking-wide">{label}</div>
+      <div className={`text-2xl font-semibold mt-1 ${color}`}>{value}</div>
+    </div>
+  );
+}
