@@ -90,6 +90,17 @@ docker compose down -v
 
 ---
 
+## Screenshots
+
+| | |
+|:-:|:-:|
+| ![Document Upload](docs/screenshots/document-upload.png) | ![Search Interface](docs/screenshots/search-interface.png) |
+| *Upload documents (PDF, Markdown, HTML, plain text)* | *Hybrid search with vector + keyword results* |
+| ![Chat Interface](docs/screenshots/chat-interface.png) | ![Knowledge Base Stats](docs/screenshots/knowledge-base-stats.png) |
+| *AI chat with context-aware answers* | *Knowledge base overview and index status* |
+
+---
+
 ## OS-Specific Notes
 
 Docker handles cross-platform compatibility, but each OS has unique considerations for GPU acceleration:
