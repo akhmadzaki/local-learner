@@ -1,7 +1,6 @@
 import { useState, useCallback } from "react";
 import { chatApi } from "../../api/search";
 import { MessageBubble } from "./MessageBubble";
-import { AgentReasoning } from "./AgentReasoning";
 import type { ChatResponse, AgentMode, ConversationTurn } from "../../types/agent";
 import type { ApiResponse } from "../../types/search";
 

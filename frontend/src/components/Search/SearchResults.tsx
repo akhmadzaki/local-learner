@@ -17,7 +17,7 @@ export function SearchResults({ results }: SearchResultsProps) {
     <div className="space-y-3">
       {results.map((r, i) => (
         <div
-          key={`${r.chunk_id}-${i}`}
+          key={r.chunk_id}
           className="p-4 rounded-lg border border-surface-200 bg-white hover:border-primary-200 transition-colors"
         >
           <div className="flex items-center justify-between mb-1">

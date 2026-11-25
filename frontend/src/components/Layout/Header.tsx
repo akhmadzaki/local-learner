@@ -1,5 +1,3 @@
-import { SearchBar } from "../Search/SearchBar";
-
 export function Header() {
   return (
     <header className="flex items-center justify-between h-14 px-6 bg-white border-b border-surface-200">
