@@ -1,6 +1,3 @@
-# Dependencies
-/go.sum
-
 # Environment
 .env
 !.env.example

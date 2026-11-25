@@ -5,6 +5,7 @@ go 1.26
 require (
 	github.com/golang-migrate/migrate/v4 v4.20.1
 	github.com/google/uuid v1.6.0
+	github.com/ledongthuc/pdf v0.0.0-20261020125853-5e46805f718e
 	github.com/lib/pq v1.12.3
 	github.com/pgvector/pgvector-go v0.4.1
 	github.com/swaggo/http-swagger v1.3.4
@@ -19,7 +20,6 @@ require (
 	github.com/go-openapi/spec v0.20.6 // indirect
 	github.com/go-openapi/swag v0.19.15 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
-	github.com/ledongthuc/pdf v0.0.0-20261020125853-5e46805f718e // indirect
 	github.com/mailru/easyjson v0.7.6 // indirect
 	github.com/swaggo/files v1.0.1 // indirect
 	golang.org/x/mod v0.36.0 // indirect
