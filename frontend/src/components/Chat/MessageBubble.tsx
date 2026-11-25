@@ -25,7 +25,7 @@ export function MessageBubble({ turn }: MessageBubbleProps) {
                 {turn.sources.length} source{turn.sources.length !== 1 ? "s" : ""}
               </summary>
               <div className="mt-1 space-y-1">
-                {turn.sources.map((s, i) => (
+                {turn.sources.map((s) => (
                   <div key={s.chunk_id} className="text-xs text-surface-400 truncate">
                     <span className="text-primary-500">[{s.score.toFixed(2)}]</span>{" "}
                     {s.document_title}
